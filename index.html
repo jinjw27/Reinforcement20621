@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Fluid Horizon - AI Gameplay</title>
+<title>Fluid Horizon - Easy AI Gameplay</title>
 <style>
   html, body {
     margin: 0; padding: 0;
@@ -40,33 +40,30 @@
   const WIDTH = canvas.width;
   const HEIGHT = canvas.height;
 
-  // 보이는 이미지 크기
   const DRAW_WIDTH = 50;
   const DRAW_HEIGHT = 40;
-
-  // 충돌 판정용 작은 Hitbox
-  const PLAYER_WIDTH = 35;   // 이미지보다 작은 충돌 박스
+  const PLAYER_WIDTH = 35;
   const PLAYER_HEIGHT = 28;
 
-  const OBSTACLE_WIDTH = 80;
-  const GAP_HEIGHT = 200;
+  // Easy difficulty
+  const OBSTACLE_WIDTH = 40; // 폭 줄임
+  const GAP_HEIGHT = 300;    // 간격 늘림
+  const thrust = -12;        // 점프 세기 증가
+  const gravity = 0.35;      // 중력 감소
+  const obstacleSpeed = 5;
+  const obstacleInterval = 120; // 기둥 생성 간격 늘림
 
   // Load spaceship image
   const shipImg = new Image();
-  shipImg.src = "spaceship.png"; // 같은 폴더에 두세요
+  shipImg.src = "spaceship.png";
 
-  // Game state
   let player = { x: 100, y: HEIGHT / 2, vy: 0 };
   let obstacles = [];
   let stars = [];
   let score = 0;
   let gameOver = false;
-  const gravity = 0.5;
-  const thrust = -10;
-  const obstacleSpeed = 5;
   let frameCount = 0;
 
-  // Load ONNX model
   const session = await ort.InferenceSession.create('./model.onnx');
   document.getElementById('loading').style.display = 'none';
 
@@ -76,23 +73,19 @@
   }
 
   function createStars() {
+    stars = [];
     for (let i = 0; i < 100; i++) {
-      stars.push({
-        x: Math.random() * WIDTH,
-        y: Math.random() * HEIGHT,
-        r: Math.random() * 2,
-        speed: Math.random() * 1 + 0.5
-      });
+      stars.push({ x: Math.random() * WIDTH, y: Math.random() * HEIGHT, r: Math.random() * 2, speed: Math.random() * 1 + 0.5 });
     }
   }
 
   function resetGame() {
-    player.y = HEIGHT / 2;
-    player.vy = 0;
+    player = { x: 100, y: HEIGHT / 2, vy: 0 };
     obstacles = [];
     score = 0;
     gameOver = false;
     frameCount = 0;
+    createStars();
   }
 
   function getClosestObstacle() {
@@ -101,13 +94,7 @@
 
   function getStateVector() {
     const closest = getClosestObstacle();
-    return new Float32Array([
-      player.y,
-      player.vy,
-      closest.x,
-      closest.gapY,
-      GAP_HEIGHT
-    ]);
+    return new Float32Array([player.y, player.vy, closest.x, closest.gapY, GAP_HEIGHT]);
   }
 
   async function getAction(stateVec) {
@@ -127,20 +114,16 @@
     player.vy += gravity;
     player.y += player.vy;
 
-    if (frameCount % 90 === 0) obstacles.push(createObstacle());
+    if (frameCount % obstacleInterval === 0) obstacles.push(createObstacle());
 
     for (let obs of obstacles) {
       obs.x -= obstacleSpeed;
-      // 충돌 판정 (작은 hitbox 사용)
-      if (
-        player.x + PLAYER_WIDTH / 2 > obs.x &&
-        player.x - PLAYER_WIDTH / 2 < obs.x + OBSTACLE_WIDTH &&
-        (player.y - PLAYER_HEIGHT / 2 < obs.gapY - GAP_HEIGHT / 2 ||
-         player.y + PLAYER_HEIGHT / 2 > obs.gapY + GAP_HEIGHT / 2)
-      ) {
+      if (player.x + PLAYER_WIDTH / 2 > obs.x &&
+          player.x - PLAYER_WIDTH / 2 < obs.x + OBSTACLE_WIDTH &&
+          (player.y - PLAYER_HEIGHT / 2 < obs.gapY - GAP_HEIGHT / 2 ||
+           player.y + PLAYER_HEIGHT / 2 > obs.gapY + GAP_HEIGHT / 2)) {
         gameOver = true;
       }
-      // 점수
       if (!obs.passed && obs.x + OBSTACLE_WIDTH < player.x - PLAYER_WIDTH / 2) {
         score++;
         obs.passed = true;
@@ -150,10 +133,7 @@
 
     for (let s of stars) {
       s.x -= s.speed;
-      if (s.x < 0) {
-        s.x = WIDTH;
-        s.y = Math.random() * HEIGHT;
-      }
+      if (s.x < 0) { s.x = WIDTH; s.y = Math.random() * HEIGHT; }
     }
     frameCount++;
   }
@@ -161,7 +141,6 @@
   function draw() {
     ctx.clearRect(0, 0, WIDTH, HEIGHT);
 
-    // Background stars
     ctx.fillStyle = '#fff';
     for (let s of stars) {
       ctx.beginPath();
@@ -169,16 +148,13 @@
       ctx.fill();
     }
 
-    // Player (draw spaceship image at larger size)
     if (shipImg.complete) {
       ctx.drawImage(shipImg, player.x - DRAW_WIDTH / 2, player.y - DRAW_HEIGHT / 2, DRAW_WIDTH, DRAW_HEIGHT);
     } else {
-      // fallback
       ctx.fillStyle = '#ffd700';
       ctx.fillRect(player.x - DRAW_WIDTH / 2, player.y - DRAW_HEIGHT / 2, DRAW_WIDTH, DRAW_HEIGHT);
     }
 
-    // Obstacles
     for (let obs of obstacles) {
       const neon = ctx.createLinearGradient(obs.x, 0, obs.x + OBSTACLE_WIDTH, 0);
       neon.addColorStop(0, '#00ffffaa');
@@ -188,7 +164,6 @@
       ctx.fillRect(obs.x, obs.gapY + GAP_HEIGHT / 2, OBSTACLE_WIDTH, HEIGHT - (obs.gapY + GAP_HEIGHT / 2));
     }
 
-    // Score
     ctx.fillStyle = '#ffffff';
     ctx.font = '16px "Press Start 2P"';
     ctx.fillText(`SCORE: ${score}`, 20, 30);
@@ -211,9 +186,7 @@
     requestAnimationFrame(gameLoop);
   }
 
-  canvas.addEventListener('click', () => {
-    if (gameOver) resetGame();
-  });
+  canvas.addEventListener('click', () => { if (gameOver) resetGame(); });
 
   createStars();
   gameLoop();
