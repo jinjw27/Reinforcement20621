@@ -9,22 +9,25 @@
     margin: 0; padding: 0;
     height: 100%;
     display: flex; justify-content: center; align-items: center;
-    background: #0a0a0a;
-    font-family: sans-serif;
+    background: #000;
+    font-family: 'Press Start 2P', sans-serif;
     overflow: hidden;
   }
   canvas {
     display: block;
-    background: linear-gradient(to bottom, #1e1e2f, #0a0a0a);
+    background: radial-gradient(circle at center, #0a0a1f, #000);
     border-radius: 12px;
+    box-shadow: 0 0 20px #00ffff88;
   }
   #loading {
     position: absolute;
     color: #fff;
-    font-size: 1.2rem;
+    font-size: 1rem;
     top: 10px;
+    left: 10px;
   }
 </style>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 </head>
 <body>
 <div id="loading">Loading AI model...</div>
@@ -37,14 +40,25 @@
   const WIDTH = canvas.width;
   const HEIGHT = canvas.height;
 
-  const PLAYER_WIDTH = 40;
-  const PLAYER_HEIGHT = 30;
+  // 보이는 이미지 크기
+  const DRAW_WIDTH = 50;
+  const DRAW_HEIGHT = 40;
+
+  // 충돌 판정용 작은 Hitbox
+  const PLAYER_WIDTH = 35;   // 이미지보다 작은 충돌 박스
+  const PLAYER_HEIGHT = 28;
+
   const OBSTACLE_WIDTH = 80;
   const GAP_HEIGHT = 200;
+
+  // Load spaceship image
+  const shipImg = new Image();
+  shipImg.src = "spaceship.png"; // 같은 폴더에 두세요
 
   // Game state
   let player = { x: 100, y: HEIGHT / 2, vy: 0 };
   let obstacles = [];
+  let stars = [];
   let score = 0;
   let gameOver = false;
   const gravity = 0.5;
@@ -58,7 +72,18 @@
 
   function createObstacle() {
     const gapCenterY = Math.random() * (HEIGHT - GAP_HEIGHT) + GAP_HEIGHT / 2;
-    return { x: WIDTH, width: OBSTACLE_WIDTH, gapY: gapCenterY };
+    return { x: WIDTH, width: OBSTACLE_WIDTH, gapY: gapCenterY, passed: false };
+  }
+
+  function createStars() {
+    for (let i = 0; i < 100; i++) {
+      stars.push({
+        x: Math.random() * WIDTH,
+        y: Math.random() * HEIGHT,
+        r: Math.random() * 2,
+        speed: Math.random() * 1 + 0.5
+      });
+    }
   }
 
   function resetGame() {
@@ -76,42 +101,37 @@
 
   function getStateVector() {
     const closest = getClosestObstacle();
-    // Observation vector [player.y, player.vy, obs.x, obs.gapY, GAP_HEIGHT]
-    const state = new Float32Array([
+    return new Float32Array([
       player.y,
       player.vy,
       closest.x,
       closest.gapY,
       GAP_HEIGHT
     ]);
-    return state;
   }
 
   async function getAction(stateVec) {
     const tensor = new ort.Tensor('float32', stateVec, [1, stateVec.length]);
-    const output = await session.run({ observation: tensor }); // 입력 이름 동일
-    const logits = output.action.data;                         // 출력 이름 action 사용
+    const output = await session.run({ observation: tensor });
+    const logits = output.action.data;
     return logits[1] > logits[0] ? 1 : 0;
   }
 
   async function update() {
     if (gameOver) return;
 
-    // AI Inference
     const stateVec = getStateVector();
     const action = await getAction(stateVec);
     if (action === 1) player.vy = thrust;
 
-    // Player physics
     player.vy += gravity;
     player.y += player.vy;
 
-    // Add new obstacles
     if (frameCount % 90 === 0) obstacles.push(createObstacle());
 
-    // Move obstacles and detect collision
     for (let obs of obstacles) {
       obs.x -= obstacleSpeed;
+      // 충돌 판정 (작은 hitbox 사용)
       if (
         player.x + PLAYER_WIDTH / 2 > obs.x &&
         player.x - PLAYER_WIDTH / 2 < obs.x + OBSTACLE_WIDTH &&
@@ -120,41 +140,68 @@
       ) {
         gameOver = true;
       }
-      if (obs.x + OBSTACLE_WIDTH < 0) score++;
+      // 점수
+      if (!obs.passed && obs.x + OBSTACLE_WIDTH < player.x - PLAYER_WIDTH / 2) {
+        score++;
+        obs.passed = true;
+      }
     }
-
-    // Remove off-screen obstacles
     obstacles = obstacles.filter(o => o.x + OBSTACLE_WIDTH > 0);
+
+    for (let s of stars) {
+      s.x -= s.speed;
+      if (s.x < 0) {
+        s.x = WIDTH;
+        s.y = Math.random() * HEIGHT;
+      }
+    }
     frameCount++;
   }
 
   function draw() {
     ctx.clearRect(0, 0, WIDTH, HEIGHT);
 
-    // Player
-    ctx.fillStyle = '#ffd700';
-    ctx.fillRect(player.x - PLAYER_WIDTH / 2, player.y - PLAYER_HEIGHT / 2, PLAYER_WIDTH, PLAYER_HEIGHT);
+    // Background stars
+    ctx.fillStyle = '#fff';
+    for (let s of stars) {
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Player (draw spaceship image at larger size)
+    if (shipImg.complete) {
+      ctx.drawImage(shipImg, player.x - DRAW_WIDTH / 2, player.y - DRAW_HEIGHT / 2, DRAW_WIDTH, DRAW_HEIGHT);
+    } else {
+      // fallback
+      ctx.fillStyle = '#ffd700';
+      ctx.fillRect(player.x - DRAW_WIDTH / 2, player.y - DRAW_HEIGHT / 2, DRAW_WIDTH, DRAW_HEIGHT);
+    }
 
     // Obstacles
-    ctx.fillStyle = '#00ffff';
     for (let obs of obstacles) {
+      const neon = ctx.createLinearGradient(obs.x, 0, obs.x + OBSTACLE_WIDTH, 0);
+      neon.addColorStop(0, '#00ffffaa');
+      neon.addColorStop(1, '#00ff99aa');
+      ctx.fillStyle = neon;
       ctx.fillRect(obs.x, 0, OBSTACLE_WIDTH, obs.gapY - GAP_HEIGHT / 2);
       ctx.fillRect(obs.x, obs.gapY + GAP_HEIGHT / 2, OBSTACLE_WIDTH, HEIGHT - (obs.gapY + GAP_HEIGHT / 2));
     }
 
     // Score
     ctx.fillStyle = '#ffffff';
-    ctx.font = '24px sans-serif';
-    ctx.fillText(`Score: ${score}`, 10, 30);
+    ctx.font = '16px "Press Start 2P"';
+    ctx.fillText(`SCORE: ${score}`, 20, 30);
 
     if (gameOver) {
-      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
       ctx.fillRect(0, 0, WIDTH, HEIGHT);
       ctx.fillStyle = '#ff5555';
-      ctx.font = '36px sans-serif';
-      ctx.fillText('Game Over', WIDTH / 2 - 90, HEIGHT / 2);
-      ctx.font = '24px sans-serif';
-      ctx.fillText('Click to restart', WIDTH / 2 - 80, HEIGHT / 2 + 40);
+      ctx.font = '24px "Press Start 2P"';
+      ctx.fillText('GAME OVER', WIDTH / 2 - 100, HEIGHT / 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '12px "Press Start 2P"';
+      ctx.fillText('CLICK TO RESTART', WIDTH / 2 - 100, HEIGHT / 2 + 40);
     }
   }
 
@@ -168,6 +215,7 @@
     if (gameOver) resetGame();
   });
 
+  createStars();
   gameLoop();
 })();
 </script>
