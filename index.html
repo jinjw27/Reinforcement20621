@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fluid Horizon - AI Gameplay</title>
+<style>
+  html, body {
+    margin: 0; padding: 0;
+    height: 100%;
+    display: flex; justify-content: center; align-items: center;
+    background: #0a0a0a;
+    font-family: sans-serif;
+    overflow: hidden;
+  }
+  canvas {
+    display: block;
+    background: linear-gradient(to bottom, #1e1e2f, #0a0a0a);
+    border-radius: 12px;
+  }
+  #loading {
+    position: absolute;
+    color: #fff;
+    font-size: 1.2rem;
+    top: 10px;
+  }
+</style>
+</head>
+<body>
+<div id="loading">Loading AI model...</div>
+<canvas id="gameCanvas" width="800" height="600"></canvas>
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js" crossorigin="anonymous"></script>
+<script>
+(async () => {
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d');
+  const WIDTH = canvas.width;
+  const HEIGHT = canvas.height;
+
+  const PLAYER_WIDTH = 40;
+  const PLAYER_HEIGHT = 30;
+  const OBSTACLE_WIDTH = 80;
+  const GAP_HEIGHT = 200;
+
+  // Game state
+  let player = { x: 100, y: HEIGHT / 2, vy: 0 };
+  let obstacles = [];
+  let score = 0;
+  let gameOver = false;
+  const gravity = 0.5;
+  const thrust = -10;
+  const obstacleSpeed = 5;
+  let frameCount = 0;
+
+  // Load ONNX model
+  const session = await ort.InferenceSession.create('./model.onnx');
+  document.getElementById('loading').style.display = 'none';
+
+  function createObstacle() {
+    const gapCenterY = Math.random() * (HEIGHT - GAP_HEIGHT) + GAP_HEIGHT / 2;
+    return { x: WIDTH, width: OBSTACLE_WIDTH, gapY: gapCenterY };
+  }
+
+  function resetGame() {
+    player.y = HEIGHT / 2;
+    player.vy = 0;
+    obstacles = [];
+    score = 0;
+    gameOver = false;
+    frameCount = 0;
+  }
+
+  function getClosestObstacle() {
+    return obstacles.find(obs => obs.x + OBSTACLE_WIDTH > player.x) || { x: WIDTH, gapY: HEIGHT / 2 };
+  }
+
+  function getStateVector() {
+    const closest = getClosestObstacle();
+    // Observation vector [player.y, player.vy, obs.x, obs.gapY, GAP_HEIGHT]
+    const state = new Float32Array([
+      player.y,
+      player.vy,
+      closest.x,
+      closest.gapY,
+      GAP_HEIGHT
+    ]);
+    return state;
+  }
+
+  async function getAction(stateVec) {
+    const tensor = new ort.Tensor('float32', stateVec, [1, stateVec.length]);
+    const output = await session.run({ observation: tensor }); // 입력 이름 동일
+    const logits = output.action.data;                         // 출력 이름 action 사용
+    return logits[1] > logits[0] ? 1 : 0;
+  }
+
+  async function update() {
+    if (gameOver) return;
+
+    // AI Inference
+    const stateVec = getStateVector();
+    const action = await getAction(stateVec);
+    if (action === 1) player.vy = thrust;
+
+    // Player physics
+    player.vy += gravity;
+    player.y += player.vy;
+
+    // Add new obstacles
+    if (frameCount % 90 === 0) obstacles.push(createObstacle());
+
+    // Move obstacles and detect collision
+    for (let obs of obstacles) {
+      obs.x -= obstacleSpeed;
+      if (
+        player.x + PLAYER_WIDTH / 2 > obs.x &&
+        player.x - PLAYER_WIDTH / 2 < obs.x + OBSTACLE_WIDTH &&
+        (player.y - PLAYER_HEIGHT / 2 < obs.gapY - GAP_HEIGHT / 2 ||
+         player.y + PLAYER_HEIGHT / 2 > obs.gapY + GAP_HEIGHT / 2)
+      ) {
+        gameOver = true;
+      }
+      if (obs.x + OBSTACLE_WIDTH < 0) score++;
+    }
+
+    // Remove off-screen obstacles
+    obstacles = obstacles.filter(o => o.x + OBSTACLE_WIDTH > 0);
+    frameCount++;
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, WIDTH, HEIGHT);
+
+    // Player
+    ctx.fillStyle = '#ffd700';
+    ctx.fillRect(player.x - PLAYER_WIDTH / 2, player.y - PLAYER_HEIGHT / 2, PLAYER_WIDTH, PLAYER_HEIGHT);
+
+    // Obstacles
+    ctx.fillStyle = '#00ffff';
+    for (let obs of obstacles) {
+      ctx.fillRect(obs.x, 0, OBSTACLE_WIDTH, obs.gapY - GAP_HEIGHT / 2);
+      ctx.fillRect(obs.x, obs.gapY + GAP_HEIGHT / 2, OBSTACLE_WIDTH, HEIGHT - (obs.gapY + GAP_HEIGHT / 2));
+    }
+
+    // Score
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '24px sans-serif';
+    ctx.fillText(`Score: ${score}`, 10, 30);
+
+    if (gameOver) {
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillRect(0, 0, WIDTH, HEIGHT);
+      ctx.fillStyle = '#ff5555';
+      ctx.font = '36px sans-serif';
+      ctx.fillText('Game Over', WIDTH / 2 - 90, HEIGHT / 2);
+      ctx.font = '24px sans-serif';
+      ctx.fillText('Click to restart', WIDTH / 2 - 80, HEIGHT / 2 + 40);
+    }
+  }
+
+  async function gameLoop() {
+    await update();
+    draw();
+    requestAnimationFrame(gameLoop);
+  }
+
+  canvas.addEventListener('click', () => {
+    if (gameOver) resetGame();
+  });
+
+  gameLoop();
+})();
+</script>
+</body>
+</html>
