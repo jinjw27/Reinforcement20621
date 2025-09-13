@@ -112,8 +112,8 @@ class FluidHorizonEnv(gym.Env):
 
         # Observation space: [ship y, ship vy, dist to obs, gap y, gap height]
         self.observation_space = spaces.Box(
-            low=np.array([-1.0, -1.0, -1.0, -1.0, -1.0]),
-            high=np.array([1.0, 1.0, 1.0, 1.0, 1.0]),
+            low=np.array([-1.0, -1.0, -1.0, -1.0, -1.0], dtype=np.float32),
+            high=np.array([1.0, 1.0, 1.0, 1.0, 1.0], dtype=np.float32),
             dtype=np.float32
         )
 
