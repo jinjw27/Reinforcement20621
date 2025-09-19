@@ -27,15 +27,15 @@ FONT = pygame.font.SysFont("Arial", 36)
 SMALL_FONT = pygame.font.SysFont("Arial", 24)
 
 # ----------------------
-# Game constants (JS index.html 과 동일하게 수정)
+# Game constants
 # ----------------------
 FPS = 60
-GRAVITY = 0.35          # JS와 동일
-THRUST = -12            # JS와 동일
+GRAVITY = 0.35
+THRUST = -12
 OBSTACLE_SPEED = 5
 OBSTACLE_INTERVAL = 1500
-OBSTACLE_WIDTH = 40     # JS와 동일
-GAP_HEIGHT = 300        # JS와 동일
+OBSTACLE_WIDTH = 40
+GAP_HEIGHT = 300
 
 # ----------------------
 # Game Classes
@@ -45,18 +45,22 @@ class Ship:
         self.width = 40
         self.height = 30
         self.x = 100
-        self.y = HEIGHT // 2
+        self.color = SHIP_COLOR
+        self.reset()
+        self.rect = pygame.Rect(self.x, self.y, self.width, self.height)
+
+    def reset(self):
+        # 중앙 대신 랜덤 y 위치에서 시작
+        self.y = random.randint(HEIGHT // 4, 3 * HEIGHT // 4)
         self.velocity = 0
         self.rect = pygame.Rect(self.x, self.y, self.width, self.height)
-        self.color = SHIP_COLOR
 
     def update(self, thrust_on):
         if thrust_on:
             self.velocity = THRUST
         self.velocity += GRAVITY
         self.y += self.velocity
-        self.rect.y = self.y
-        self.rect.y = max(0, min(self.rect.y, HEIGHT - self.rect.height))
+        self.rect.y = max(0, min(self.y, HEIGHT - self.height))
 
     def draw(self, surface):
         pygame.draw.rect(surface, self.color, self.rect)
@@ -67,7 +71,6 @@ class Obstacle:
         self.width = OBSTACLE_WIDTH
         self.gap_height = GAP_HEIGHT
         self.gap_center_y = random.randint(self.gap_height // 2, HEIGHT - self.gap_height // 2)
-
         self.top_rect = pygame.Rect(self.x, 0, self.width, self.gap_center_y - self.gap_height // 2)
         self.bottom_rect = pygame.Rect(self.x, self.gap_center_y + self.gap_height // 2, self.width, HEIGHT)
         self.passed = False
@@ -101,13 +104,11 @@ class FluidHorizonEnv(gym.Env):
         self.screen = None
         self.clock = None
 
-        # Observation space
         self.observation_space = spaces.Box(
             low=np.array([-1.0, -1.0, -1.0, -1.0, -1.0], dtype=np.float32),
             high=np.array([1.0, 1.0, 1.0, 1.0, 1.0], dtype=np.float32),
             dtype=np.float32
         )
-
         self.action_space = spaces.Discrete(2)
 
         self.ship = None
@@ -151,18 +152,22 @@ class FluidHorizonEnv(gym.Env):
 
         self.ship = Ship()
         self.obstacles = []
+
+        # 첫 번째 장애물 중앙 근처 생성
+        self.obstacles.append(Obstacle(WIDTH))
+        self.obstacles[0].gap_center_y = HEIGHT // 2
+
+        # 나머지 장애물 랜덤 생성
+        for i in range(1, 5):
+            self.obstacles.append(Obstacle(WIDTH + i * (WIDTH // 2)))
+
         self.score = 0
         self.passed_obstacles = 0
 
-        for i in range(5):
-            self.obstacles.append(Obstacle(WIDTH + i * (WIDTH // 2)))
-
         observation = self._get_obs()
         info = self._get_info()
-
         if self.render_mode == "human":
             self.render()
-
         return observation, info
 
     def step(self, action):
