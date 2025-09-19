@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Fluid Horizon - Easy AI Gameplay</title>
+<title>Fluid Horizon - AI Gameplay</title>
 <style>
   html, body {
     margin: 0; padding: 0;
@@ -46,12 +46,12 @@
   const PLAYER_HEIGHT = 28;
 
   // Easy difficulty
-  const OBSTACLE_WIDTH = 40; // 폭 줄임
-  const GAP_HEIGHT = 300;    // 간격 늘림
-  const thrust = -12;        // 점프 세기 증가
-  const gravity = 0.35;      // 중력 감소
+  const OBSTACLE_WIDTH = 40;
+  const GAP_HEIGHT = 300;
+  const thrust = -12;
+  const gravity = 0.35;
   const obstacleSpeed = 5;
-  const obstacleInterval = 120; // 기둥 생성 간격 늘림
+  const obstacleInterval = 120;
 
   // Load spaceship image
   const shipImg = new Image();
@@ -64,11 +64,14 @@
   let gameOver = false;
   let frameCount = 0;
 
+  // Load ONNX model
   const session = await ort.InferenceSession.create('./model.onnx');
   document.getElementById('loading').style.display = 'none';
 
   function createObstacle() {
-    const gapCenterY = Math.random() * (HEIGHT - GAP_HEIGHT) + GAP_HEIGHT / 2;
+    const minY = GAP_HEIGHT / 2 + 50;
+    const maxY = HEIGHT - GAP_HEIGHT / 2 - 50;
+    const gapCenterY = Math.random() * (maxY - minY) + minY;
     return { x: WIDTH, width: OBSTACLE_WIDTH, gapY: gapCenterY, passed: false };
   }
 
@@ -92,9 +95,19 @@
     return obstacles.find(obs => obs.x + OBSTACLE_WIDTH > player.x) || { x: WIDTH, gapY: HEIGHT / 2 };
   }
 
+  // -----------------------------
+  // Model input vector (5D normalized)
+  // -----------------------------
   function getStateVector() {
     const closest = getClosestObstacle();
-    return new Float32Array([player.y, player.vy, closest.x, closest.gapY, GAP_HEIGHT]);
+
+    const normY = (player.y - HEIGHT/2) / (HEIGHT/2);               // ship y normalized
+    const normVY = player.vy / Math.abs(thrust*1.5);               // velocity normalized
+    const relObsX = (closest.x - player.x) / WIDTH;                // obstacle x relative
+    const obsGapY = (closest.gapY - HEIGHT/2) / (HEIGHT/2);        // gap center y normalized
+    const obsGapH = GAP_HEIGHT / HEIGHT;                           // gap height normalized
+
+    return new Float32Array([normY, normVY, relObsX, obsGapY, obsGapH]);
   }
 
   async function getAction(stateVec) {
@@ -118,13 +131,13 @@
 
     for (let obs of obstacles) {
       obs.x -= obstacleSpeed;
-      if (player.x + PLAYER_WIDTH / 2 > obs.x &&
-          player.x - PLAYER_WIDTH / 2 < obs.x + OBSTACLE_WIDTH &&
-          (player.y - PLAYER_HEIGHT / 2 < obs.gapY - GAP_HEIGHT / 2 ||
-           player.y + PLAYER_HEIGHT / 2 > obs.gapY + GAP_HEIGHT / 2)) {
+      if (player.x + PLAYER_WIDTH/2 > obs.x &&
+          player.x - PLAYER_WIDTH/2 < obs.x + OBSTACLE_WIDTH &&
+          (player.y - PLAYER_HEIGHT/2 < obs.gapY - GAP_HEIGHT/2 ||
+           player.y + PLAYER_HEIGHT/2 > obs.gapY + GAP_HEIGHT/2)) {
         gameOver = true;
       }
-      if (!obs.passed && obs.x + OBSTACLE_WIDTH < player.x - PLAYER_WIDTH / 2) {
+      if (!obs.passed && obs.x + OBSTACLE_WIDTH < player.x - PLAYER_WIDTH/2) {
         score++;
         obs.passed = true;
       }
@@ -144,15 +157,15 @@
     ctx.fillStyle = '#fff';
     for (let s of stars) {
       ctx.beginPath();
-      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI*2);
       ctx.fill();
     }
 
     if (shipImg.complete) {
-      ctx.drawImage(shipImg, player.x - DRAW_WIDTH / 2, player.y - DRAW_HEIGHT / 2, DRAW_WIDTH, DRAW_HEIGHT);
+      ctx.drawImage(shipImg, player.x - DRAW_WIDTH/2, player.y - DRAW_HEIGHT/2, DRAW_WIDTH, DRAW_HEIGHT);
     } else {
       ctx.fillStyle = '#ffd700';
-      ctx.fillRect(player.x - DRAW_WIDTH / 2, player.y - DRAW_HEIGHT / 2, DRAW_WIDTH, DRAW_HEIGHT);
+      ctx.fillRect(player.x - DRAW_WIDTH/2, player.y - DRAW_HEIGHT/2, DRAW_WIDTH, DRAW_HEIGHT);
     }
 
     for (let obs of obstacles) {
@@ -160,8 +173,8 @@
       neon.addColorStop(0, '#00ffffaa');
       neon.addColorStop(1, '#00ff99aa');
       ctx.fillStyle = neon;
-      ctx.fillRect(obs.x, 0, OBSTACLE_WIDTH, obs.gapY - GAP_HEIGHT / 2);
-      ctx.fillRect(obs.x, obs.gapY + GAP_HEIGHT / 2, OBSTACLE_WIDTH, HEIGHT - (obs.gapY + GAP_HEIGHT / 2));
+      ctx.fillRect(obs.x, 0, OBSTACLE_WIDTH, obs.gapY - GAP_HEIGHT/2);
+      ctx.fillRect(obs.x, obs.gapY + GAP_HEIGHT/2, OBSTACLE_WIDTH, HEIGHT - (obs.gapY + GAP_HEIGHT/2));
     }
 
     ctx.fillStyle = '#ffffff';
@@ -170,13 +183,13 @@
 
     if (gameOver) {
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
-      ctx.fillRect(0, 0, WIDTH, HEIGHT);
+      ctx.fillRect(0,0,WIDTH,HEIGHT);
       ctx.fillStyle = '#ff5555';
       ctx.font = '24px "Press Start 2P"';
-      ctx.fillText('GAME OVER', WIDTH / 2 - 100, HEIGHT / 2);
+      ctx.fillText('GAME OVER', WIDTH/2-100, HEIGHT/2);
       ctx.fillStyle = '#ffffff';
       ctx.font = '12px "Press Start 2P"';
-      ctx.fillText('CLICK TO RESTART', WIDTH / 2 - 100, HEIGHT / 2 + 40);
+      ctx.fillText('CLICK TO RESTART', WIDTH/2-100, HEIGHT/2+40);
     }
   }
 
