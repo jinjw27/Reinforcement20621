@@ -182,9 +182,9 @@ class FluidHorizonEnv(gym.Env):
                 obs.passed = True
                 self.passed_obstacles += 1
                 self.score += 1
-                reward += 5.0
+                reward += 10.0
                 if self.score % 5 == 0:
-                    reward += 10.0
+                    reward += 15.0
 
         if self.obstacles and self.obstacles[0].x + self.obstacles[0].width < 0:
             self.obstacles.pop(0)
@@ -194,7 +194,7 @@ class FluidHorizonEnv(gym.Env):
             reward = -100.0
             terminated = True
         else:
-            reward += 0.5
+            reward += 1
 
         observation = self._get_obs()
         info = self._get_info()
