@@ -45,13 +45,13 @@
   const PLAYER_WIDTH = 35;
   const PLAYER_HEIGHT = 28;
 
-  // Easy difficulty parameters
-  const OBSTACLE_WIDTH = 40; // 좁은 기둥
-  const GAP_HEIGHT = 300;    // 넓은 간격
-  const thrust = -12;        // 점프 세기
-  const gravity = 0.35;      // 중력
+  // Easy difficulty
+  const OBSTACLE_WIDTH = 40; // 폭 줄임
+  const GAP_HEIGHT = 300;    // 간격 늘림
+  const thrust = -12;        // 점프 세기 증가
+  const gravity = 0.35;      // 중력 감소
   const obstacleSpeed = 5;
-  const obstacleInterval = 120; // 기둥 생성 주기
+  const obstacleInterval = 120; // 기둥 생성 간격 늘림
 
   // Load spaceship image
   const shipImg = new Image();
@@ -64,7 +64,6 @@
   let gameOver = false;
   let frameCount = 0;
 
-  // Load ONNX model
   const session = await ort.InferenceSession.create('./model.onnx');
   document.getElementById('loading').style.display = 'none';
 
@@ -76,12 +75,7 @@
   function createStars() {
     stars = [];
     for (let i = 0; i < 100; i++) {
-      stars.push({ 
-        x: Math.random() * WIDTH, 
-        y: Math.random() * HEIGHT, 
-        r: Math.random() * 2, 
-        speed: Math.random() * 1 + 0.5 
-      });
+      stars.push({ x: Math.random() * WIDTH, y: Math.random() * HEIGHT, r: Math.random() * 2, speed: Math.random() * 1 + 0.5 });
     }
   }
 
@@ -98,17 +92,9 @@
     return obstacles.find(obs => obs.x + OBSTACLE_WIDTH > player.x) || { x: WIDTH, gapY: HEIGHT / 2 };
   }
 
-  // ✅ Python 환경과 동일하게 정규화된 state vector
   function getStateVector() {
     const closest = getClosestObstacle();
-
-    const normY = (player.y - HEIGHT / 2) / (HEIGHT / 2);
-    const normVy = player.vy / Math.abs(thrust * 1.5);
-    const relObsX = (closest.x - player.x) / WIDTH;
-    const obsGapY = (closest.gapY - HEIGHT / 2) / (HEIGHT / 2);
-    const obsGapH = GAP_HEIGHT / HEIGHT;
-
-    return new Float32Array([normY, normVy, relObsX, obsGapY, obsGapH]);
+    return new Float32Array([player.y, player.vy, closest.x, closest.gapY, GAP_HEIGHT]);
   }
 
   async function getAction(stateVec) {
@@ -208,3 +194,4 @@
 </script>
 </body>
 </html>
+P
