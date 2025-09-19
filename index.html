@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Fluid Horizon - AI Gameplay</title>
+<title>Fluid Horizon - Improved AI Gameplay</title>
 <style>
   html, body {
     margin: 0; padding: 0;
@@ -45,11 +45,11 @@
   const PLAYER_WIDTH = 35;
   const PLAYER_HEIGHT = 28;
 
-  // Easy difficulty
+  // Improved jump / gravity for smoother flight
   const OBSTACLE_WIDTH = 40;
-  const GAP_HEIGHT = 300;
-  const thrust = -12;
-  const gravity = 0.35;
+  const GAP_HEIGHT = 280;  // Slightly narrower for smoother AI decision
+  const thrust = -10;      // Reduced jump power
+  const gravity = 0.38;    // Slightly increased gravity
   const obstacleSpeed = 5;
   const obstacleInterval = 120;
 
@@ -64,7 +64,6 @@
   let gameOver = false;
   let frameCount = 0;
 
-  // Load ONNX model
   const session = await ort.InferenceSession.create('./model.onnx');
   document.getElementById('loading').style.display = 'none';
 
@@ -95,19 +94,20 @@
     return obstacles.find(obs => obs.x + OBSTACLE_WIDTH > player.x) || { x: WIDTH, gapY: HEIGHT / 2 };
   }
 
-  // -----------------------------
-  // Model input vector (5D normalized)
-  // -----------------------------
   function getStateVector() {
     const closest = getClosestObstacle();
-
-    const normY = (player.y - HEIGHT/2) / (HEIGHT/2);               // ship y normalized
-    const normVY = player.vy / Math.abs(thrust*1.5);               // velocity normalized
-    const relObsX = (closest.x - player.x) / WIDTH;                // obstacle x relative
-    const obsGapY = (closest.gapY - HEIGHT/2) / (HEIGHT/2);        // gap center y normalized
-    const obsGapH = GAP_HEIGHT / HEIGHT;                           // gap height normalized
-
-    return new Float32Array([normY, normVY, relObsX, obsGapY, obsGapH]);
+    // Add relative top and bottom gap info for smoother decision
+    const relGapTop = (closest.gapY - GAP_HEIGHT / 2 - player.y) / HEIGHT;
+    const relGapBottom = (closest.gapY + GAP_HEIGHT / 2 - player.y) / HEIGHT;
+    return new Float32Array([
+      (player.y - HEIGHT/2) / (HEIGHT/2),
+      player.vy / 10,
+      (closest.x - player.x) / WIDTH,
+      (closest.gapY - HEIGHT/2) / (HEIGHT/2),
+      GAP_HEIGHT / HEIGHT,
+      relGapTop,
+      relGapBottom
+    ]);
   }
 
   async function getAction(stateVec) {
@@ -120,8 +120,12 @@
   async function update() {
     if (gameOver) return;
 
-    const stateVec = getStateVector();
-    const action = await getAction(stateVec);
+    // Call AI every 2 frames for smoother movement
+    let action = 0;
+    if (frameCount % 2 === 0) {
+      const stateVec = getStateVector();
+      action = await getAction(stateVec);
+    }
     if (action === 1) player.vy = thrust;
 
     player.vy += gravity;
@@ -131,13 +135,13 @@
 
     for (let obs of obstacles) {
       obs.x -= obstacleSpeed;
-      if (player.x + PLAYER_WIDTH/2 > obs.x &&
-          player.x - PLAYER_WIDTH/2 < obs.x + OBSTACLE_WIDTH &&
-          (player.y - PLAYER_HEIGHT/2 < obs.gapY - GAP_HEIGHT/2 ||
-           player.y + PLAYER_HEIGHT/2 > obs.gapY + GAP_HEIGHT/2)) {
+      if (player.x + PLAYER_WIDTH / 2 > obs.x &&
+          player.x - PLAYER_WIDTH / 2 < obs.x + OBSTACLE_WIDTH &&
+          (player.y - PLAYER_HEIGHT / 2 < obs.gapY - GAP_HEIGHT / 2 ||
+           player.y + PLAYER_HEIGHT / 2 > obs.gapY + GAP_HEIGHT / 2)) {
         gameOver = true;
       }
-      if (!obs.passed && obs.x + OBSTACLE_WIDTH < player.x - PLAYER_WIDTH/2) {
+      if (!obs.passed && obs.x + OBSTACLE_WIDTH < player.x - PLAYER_WIDTH / 2) {
         score++;
         obs.passed = true;
       }
@@ -157,15 +161,15 @@
     ctx.fillStyle = '#fff';
     for (let s of stars) {
       ctx.beginPath();
-      ctx.arc(s.x, s.y, s.r, 0, Math.PI*2);
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
       ctx.fill();
     }
 
     if (shipImg.complete) {
-      ctx.drawImage(shipImg, player.x - DRAW_WIDTH/2, player.y - DRAW_HEIGHT/2, DRAW_WIDTH, DRAW_HEIGHT);
+      ctx.drawImage(shipImg, player.x - DRAW_WIDTH / 2, player.y - DRAW_HEIGHT / 2, DRAW_WIDTH, DRAW_HEIGHT);
     } else {
       ctx.fillStyle = '#ffd700';
-      ctx.fillRect(player.x - DRAW_WIDTH/2, player.y - DRAW_HEIGHT/2, DRAW_WIDTH, DRAW_HEIGHT);
+      ctx.fillRect(player.x - DRAW_WIDTH / 2, player.y - DRAW_HEIGHT / 2, DRAW_WIDTH, DRAW_HEIGHT);
     }
 
     for (let obs of obstacles) {
@@ -173,8 +177,8 @@
       neon.addColorStop(0, '#00ffffaa');
       neon.addColorStop(1, '#00ff99aa');
       ctx.fillStyle = neon;
-      ctx.fillRect(obs.x, 0, OBSTACLE_WIDTH, obs.gapY - GAP_HEIGHT/2);
-      ctx.fillRect(obs.x, obs.gapY + GAP_HEIGHT/2, OBSTACLE_WIDTH, HEIGHT - (obs.gapY + GAP_HEIGHT/2));
+      ctx.fillRect(obs.x, 0, OBSTACLE_WIDTH, obs.gapY - GAP_HEIGHT / 2);
+      ctx.fillRect(obs.x, obs.gapY + GAP_HEIGHT / 2, OBSTACLE_WIDTH, HEIGHT - (obs.gapY + GAP_HEIGHT / 2));
     }
 
     ctx.fillStyle = '#ffffff';
@@ -183,13 +187,13 @@
 
     if (gameOver) {
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
-      ctx.fillRect(0,0,WIDTH,HEIGHT);
+      ctx.fillRect(0, 0, WIDTH, HEIGHT);
       ctx.fillStyle = '#ff5555';
       ctx.font = '24px "Press Start 2P"';
-      ctx.fillText('GAME OVER', WIDTH/2-100, HEIGHT/2);
+      ctx.fillText('GAME OVER', WIDTH / 2 - 100, HEIGHT / 2);
       ctx.fillStyle = '#ffffff';
       ctx.font = '12px "Press Start 2P"';
-      ctx.fillText('CLICK TO RESTART', WIDTH/2-100, HEIGHT/2+40);
+      ctx.fillText('CLICK TO RESTART', WIDTH / 2 - 100, HEIGHT / 2 + 40);
     }
   }
 
