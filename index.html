@@ -30,8 +30,9 @@
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 </head>
 <body>
-<div id="loading">Loading...</div>
+<div id="loading">Loading AI model...</div>
 <canvas id="gameCanvas" width="800" height="600"></canvas>
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js" crossorigin="anonymous"></script>
 <script>
 (async () => {
   const canvas = document.getElementById('gameCanvas');
@@ -44,12 +45,17 @@
   const PLAYER_WIDTH = 35;
   const PLAYER_HEIGHT = 28;
 
-  const OBSTACLE_WIDTH = 40;
-  const GAP_HEIGHT = 300;
-  const thrust = -15;
-  const gravity = 0.3;
+  // Easy difficulty
+  const OBSTACLE_WIDTH = 40; // 폭 줄임
+  const GAP_HEIGHT = 300;    // 간격 늘림
+  const thrust = -12;        // 점프 세기 증가
+  const gravity = 0.35;      // 중력 감소
   const obstacleSpeed = 5;
-  const obstacleInterval = 120;
+  const obstacleInterval = 120; // 기둥 생성 간격 늘림
+
+  // Load spaceship image
+  const shipImg = new Image();
+  shipImg.src = "spaceship.png";
 
   let player = { x: 100, y: HEIGHT / 2, vy: 0 };
   let obstacles = [];
@@ -58,15 +64,11 @@
   let gameOver = false;
   let frameCount = 0;
 
-  const shipImg = new Image();
-  shipImg.src = ""; // 임시: 이미지 없으면 사각형으로 표시
-
+  const session = await ort.InferenceSession.create('./model.onnx');
   document.getElementById('loading').style.display = 'none';
 
   function createObstacle() {
-    const minY = GAP_HEIGHT / 2 + 50;
-    const maxY = HEIGHT - GAP_HEIGHT / 2 - 50;
-    const gapCenterY = Math.random() * (maxY - minY) + minY;
+    const gapCenterY = Math.random() * (HEIGHT - GAP_HEIGHT) + GAP_HEIGHT / 2;
     return { x: WIDTH, width: OBSTACLE_WIDTH, gapY: gapCenterY, passed: false };
   }
 
@@ -92,13 +94,14 @@
 
   function getStateVector() {
     const closest = getClosestObstacle();
-    // 모델 없이 점프 테스트용, 5차원만 유지
     return new Float32Array([player.y, player.vy, closest.x, closest.gapY, GAP_HEIGHT]);
   }
 
   async function getAction(stateVec) {
-    // AI 모델 없이 단순 높이 비교: gap 위쪽이면 점프
-    return player.y > getClosestObstacle().gapY ? 1 : 0;
+    const tensor = new ort.Tensor('float32', stateVec, [1, stateVec.length]);
+    const output = await session.run({ observation: tensor });
+    const logits = output.action.data;
+    return logits[1] > logits[0] ? 1 : 0;
   }
 
   async function update() {
@@ -145,7 +148,7 @@
       ctx.fill();
     }
 
-    if (shipImg.complete && shipImg.src) {
+    if (shipImg.complete) {
       ctx.drawImage(shipImg, player.x - DRAW_WIDTH / 2, player.y - DRAW_HEIGHT / 2, DRAW_WIDTH, DRAW_HEIGHT);
     } else {
       ctx.fillStyle = '#ffd700';
