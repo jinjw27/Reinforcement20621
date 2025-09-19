@@ -190,10 +190,16 @@ class FluidHorizonEnv(gym.Env):
         for obs in self.obstacles[:]:
             obs.update()
             if obs.x + obs.width < self.ship.x and not obs.passed:
-                obs.passed = True                     # ✅ 중복 방지
+                obs.passed = True
                 self.passed_obstacles += 1
-                self.score += 1                       # ✅ 점수 업데이트
-                reward += 25.0
+                self.score += 1
+
+                # ✅ 장애물 통과 보상
+                reward += 5.0
+
+                # ✅ 점진적 보상 (5개 단위마다 추가)
+                if self.score % 5 == 0:
+                    reward += 10.0
 
         # Remove obstacles off screen & add new
         if self.obstacles and self.obstacles[0].x + self.obstacles[0].width < 0:
@@ -202,10 +208,10 @@ class FluidHorizonEnv(gym.Env):
 
         # Collision / survival
         if check_collision(self.ship, self.obstacles):
-            reward = -100.0
+            reward = -100.0   # ✅ 사망 패널티 강화
             terminated = True
         else:
-            reward += 0.1
+            reward += 0.5     # ✅ 생존 보상 강화
 
         observation = self._get_obs()
         info = self._get_info()
