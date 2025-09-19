@@ -30,9 +30,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 </head>
 <body>
-<div id="loading">Loading AI model...</div>
+<div id="loading">Loading...</div>
 <canvas id="gameCanvas" width="800" height="600"></canvas>
-<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js" crossorigin="anonymous"></script>
 <script>
 (async () => {
   const canvas = document.getElementById('gameCanvas');
@@ -45,16 +44,12 @@
   const PLAYER_WIDTH = 35;
   const PLAYER_HEIGHT = 28;
 
-  // Easy difficulty
   const OBSTACLE_WIDTH = 40;
   const GAP_HEIGHT = 300;
-  const thrust = -15;   // 점프 세기 증가
-  const gravity = 0.3;  // 중력 감소
+  const thrust = -15;
+  const gravity = 0.3;
   const obstacleSpeed = 5;
   const obstacleInterval = 120;
-
-  const shipImg = new Image();
-  shipImg.src = "spaceship.png";
 
   let player = { x: 100, y: HEIGHT / 2, vy: 0 };
   let obstacles = [];
@@ -63,7 +58,9 @@
   let gameOver = false;
   let frameCount = 0;
 
-  const session = await ort.InferenceSession.create('./model.onnx');
+  const shipImg = new Image();
+  shipImg.src = ""; // 임시: 이미지 없으면 사각형으로 표시
+
   document.getElementById('loading').style.display = 'none';
 
   function createObstacle() {
@@ -95,15 +92,13 @@
 
   function getStateVector() {
     const closest = getClosestObstacle();
-    // 남은 거리 정보 추가
-    return new Float32Array([player.y, player.vy, closest.x, closest.gapY, GAP_HEIGHT, closest.x - player.x]);
+    // 모델 없이 점프 테스트용, 5차원만 유지
+    return new Float32Array([player.y, player.vy, closest.x, closest.gapY, GAP_HEIGHT]);
   }
 
   async function getAction(stateVec) {
-    const tensor = new ort.Tensor('float32', stateVec, [1, stateVec.length]);
-    const output = await session.run({ observation: tensor });
-    const logits = output.action.data;
-    return logits[1] > logits[0] ? 1 : 0;
+    // AI 모델 없이 단순 높이 비교: gap 위쪽이면 점프
+    return player.y > getClosestObstacle().gapY ? 1 : 0;
   }
 
   async function update() {
@@ -150,7 +145,7 @@
       ctx.fill();
     }
 
-    if (shipImg.complete) {
+    if (shipImg.complete && shipImg.src) {
       ctx.drawImage(shipImg, player.x - DRAW_WIDTH / 2, player.y - DRAW_HEIGHT / 2, DRAW_WIDTH, DRAW_HEIGHT);
     } else {
       ctx.fillStyle = '#ffd700';
