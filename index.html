@@ -48,12 +48,11 @@
   // Easy difficulty
   const OBSTACLE_WIDTH = 40;
   const GAP_HEIGHT = 260;
-  const thrust = -10; // 점프 세기
-  const gravity = 0.38; // 중력
+  const thrust = -10;
+  const gravity = 0.38;
   const obstacleSpeed = 4;
   const obstacleInterval = 120;
 
-  // Load spaceship image
   const shipImg = new Image();
   shipImg.src = "spaceship.png";
 
@@ -64,7 +63,6 @@
   let gameOver = false;
   let frameCount = 0;
 
-  // Load ONNX model
   const session = await ort.InferenceSession.create('./model.onnx');
   document.getElementById('loading').style.display = 'none';
 
@@ -97,12 +95,13 @@
 
   function getStateVector() {
     const closest = getClosestObstacle();
-    const normY = (player.y - HEIGHT/2) / (HEIGHT/2);
-    const normVY = player.vy / Math.abs(thrust*1.5);
-    const relObsX = (closest.x - player.x) / WIDTH;
-    const obsGapY = (closest.gapY - HEIGHT/2) / (HEIGHT/2);
-    const obsGapH = GAP_HEIGHT / HEIGHT;
-    return new Float32Array([normY, normVY, relObsX, obsGapY, obsGapH]);
+    return new Float32Array([
+      player.y,             // 원래 코드처럼 y 값 그대로
+      player.vy,            // velocity 그대로
+      closest.x,
+      closest.gapY,
+      GAP_HEIGHT
+    ]);
   }
 
   async function getAction(stateVec) {
@@ -118,8 +117,8 @@
     const stateVec = getStateVector();
     const action = await getAction(stateVec);
 
-    // 이전 속도 유지 + 점프 시 가속 추가
-    if (action === 1) player.vy += thrust;
+    // 원래 움직임 그대로: 점프 시 바로 vy를 thrust로 설정
+    if (action === 1) player.vy = thrust;
 
     // 중력 적용
     player.vy += gravity;
