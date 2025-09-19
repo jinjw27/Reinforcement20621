@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Fluid Horizon - AI Gameplay</title>
+<title>Fluid Horizon - Easy AI Gameplay</title>
 <style>
   html, body {
     margin: 0; padding: 0;
@@ -45,13 +45,13 @@
   const PLAYER_WIDTH = 35;
   const PLAYER_HEIGHT = 28;
 
-  // ✅ Python 환경과 동일한 물리 상수
-  const OBSTACLE_WIDTH = 80;
-  const GAP_HEIGHT = 200;
-  const thrust = -10;
-  const gravity = 0.5;
+  // Easy difficulty
+  const OBSTACLE_WIDTH = 40; // 폭 줄임
+  const GAP_HEIGHT = 300;    // 간격 늘림
+  const thrust = -12;        // 점프 세기 증가
+  const gravity = 0.35;      // 중력 감소
   const obstacleSpeed = 5;
-  const obstacleInterval = 90; // 프레임 단위, Python에서는 시간 기반이라 근사치 사용
+  const obstacleInterval = 120; // 기둥 생성 간격 늘림
 
   // Load spaceship image
   const shipImg = new Image();
@@ -64,7 +64,7 @@
   let gameOver = false;
   let frameCount = 0;
 
-  const session = await ort.InferenceSession.create('./model.onnx?v=2'); // ✅ 캐시 방지 쿼리스트링
+  const session = await ort.InferenceSession.create('./model.onnx');
   document.getElementById('loading').style.display = 'none';
 
   function createObstacle() {
@@ -92,17 +92,9 @@
     return obstacles.find(obs => obs.x + OBSTACLE_WIDTH > player.x) || { x: WIDTH, gapY: HEIGHT / 2 };
   }
 
-  // ✅ Python 환경과 동일한 정규화 관측값
   function getStateVector() {
     const closest = getClosestObstacle();
-
-    const normY = (player.y - HEIGHT / 2) / (HEIGHT / 2);
-    const normVy = player.vy / Math.abs(thrust * 1.5);
-    const relObsX = (closest.x - player.x) / WIDTH;
-    const normGapY = (closest.gapY - HEIGHT / 2) / (HEIGHT / 2);
-    const normGapH = GAP_HEIGHT / HEIGHT;
-
-    return new Float32Array([normY, normVy, relObsX, normGapY, normGapH]);
+    return new Float32Array([player.y, player.vy, closest.x, closest.gapY, GAP_HEIGHT]);
   }
 
   async function getAction(stateVec) {
@@ -202,3 +194,4 @@
 </script>
 </body>
 </html>
+P

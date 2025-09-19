@@ -16,9 +16,9 @@ pygame.font.init()
 WIDTH, HEIGHT = 800, 600
 
 # Colors
-BG_COLOR = (240, 244, 248)       # Soft pastel background
-SHIP_COLOR = (78, 205, 196)      # Vibrant accent for ship
-OBSTACLE_COLOR = (255, 107, 107) # Vibrant accent for obstacles
+BG_COLOR = (240, 244, 248)
+SHIP_COLOR = (78, 205, 196)
+OBSTACLE_COLOR = (255, 107, 107)
 PARTICLE_COLOR = (78, 205, 196)
 TEXT_COLOR = (50, 50, 50)
 
@@ -26,20 +26,21 @@ TEXT_COLOR = (50, 50, 50)
 FONT = pygame.font.SysFont("Arial", 36)
 SMALL_FONT = pygame.font.SysFont("Arial", 24)
 
-# Game constants
+# ----------------------
+# Game constants (JS index.html 과 동일하게 수정)
+# ----------------------
 FPS = 60
-GRAVITY = 0.5
-THRUST = -10
+GRAVITY = 0.35          # JS와 동일
+THRUST = -12            # JS와 동일
 OBSTACLE_SPEED = 5
-OBSTACLE_INTERVAL = 1500  # milliseconds
-OBSTACLE_WIDTH = 80
-GAP_HEIGHT = 200
+OBSTACLE_INTERVAL = 1500
+OBSTACLE_WIDTH = 40     # JS와 동일
+GAP_HEIGHT = 300        # JS와 동일
 
 # ----------------------
 # Game Classes
 # ----------------------
 class Ship:
-    """Represents the player's ship with its physics properties."""
     def __init__(self):
         self.width = 40
         self.height = 30
@@ -50,46 +51,37 @@ class Ship:
         self.color = SHIP_COLOR
 
     def update(self, thrust_on):
-        """Applies physics (gravity and thrust) to the ship."""
         if thrust_on:
-            self.velocity += THRUST
+            self.velocity = THRUST
         self.velocity += GRAVITY
         self.y += self.velocity
         self.rect.y = self.y
-        # Clamp position to prevent going off-screen
         self.rect.y = max(0, min(self.rect.y, HEIGHT - self.rect.height))
 
     def draw(self, surface):
-        """Draws the ship on the given surface."""
         pygame.draw.rect(surface, self.color, self.rect)
 
 class Obstacle:
-    """Represents a pair of top and bottom pipes with a gap."""
     def __init__(self, x):
         self.x = x
         self.width = OBSTACLE_WIDTH
         self.gap_height = GAP_HEIGHT
-        # Randomly determine the center of the gap
         self.gap_center_y = random.randint(self.gap_height // 2, HEIGHT - self.gap_height // 2)
 
-        # Create the top and bottom rectangles
         self.top_rect = pygame.Rect(self.x, 0, self.width, self.gap_center_y - self.gap_height // 2)
         self.bottom_rect = pygame.Rect(self.x, self.gap_center_y + self.gap_height // 2, self.width, HEIGHT)
-        self.passed = False  # ✅ 중복 카운트 방지용 플래그 추가
+        self.passed = False
 
     def update(self):
-        """Moves the obstacle to the left."""
         self.x -= OBSTACLE_SPEED
         self.top_rect.x = self.x
         self.bottom_rect.x = self.x
 
     def draw(self, surface):
-        """Draws the obstacle on the given surface."""
         pygame.draw.rect(surface, OBSTACLE_COLOR, self.top_rect)
         pygame.draw.rect(surface, OBSTACLE_COLOR, self.bottom_rect)
 
 def check_collision(ship, obstacles):
-    """Checks for collision with any obstacle or the screen boundaries."""
     if ship.rect.top <= 0 or ship.rect.bottom >= HEIGHT:
         return True
     for obs in obstacles:
@@ -97,11 +89,10 @@ def check_collision(ship, obstacles):
             return True
     return False
 
-# ---------------------------------------------
+# ----------------------
 # Gymnasium Environment Wrapper
-# ---------------------------------------------
+# ----------------------
 class FluidHorizonEnv(gym.Env):
-    """A Gymnasium environment for the Fluid Horizon game."""
     metadata = {"render_modes": ["human"], "render_fps": FPS}
 
     def __init__(self, render_mode="human"):
@@ -110,23 +101,21 @@ class FluidHorizonEnv(gym.Env):
         self.screen = None
         self.clock = None
 
-        # Observation space: [ship y, ship vy, dist to obs, gap y, gap height]
+        # Observation space
         self.observation_space = spaces.Box(
             low=np.array([-1.0, -1.0, -1.0, -1.0, -1.0], dtype=np.float32),
             high=np.array([1.0, 1.0, 1.0, 1.0, 1.0], dtype=np.float32),
             dtype=np.float32
         )
 
-        self.action_space = spaces.Discrete(2)  # 0 = no thrust, 1 = thrust
+        self.action_space = spaces.Discrete(2)
 
-        # Internal state
         self.ship = None
         self.obstacles = []
         self.score = 0
         self.passed_obstacles = 0
 
     def _get_obs(self):
-        """Creates and normalizes the observation vector."""
         next_obstacle = None
         for obs in self.obstacles:
             if obs.x + obs.width > self.ship.x:
@@ -158,7 +147,6 @@ class FluidHorizonEnv(gym.Env):
         return {"score": self.score, "passed_obstacles": self.passed_obstacles}
 
     def reset(self, seed=None, options=None):
-        """Resets the environment to its initial state."""
         super().reset(seed=seed)
 
         self.ship = Ship()
@@ -166,7 +154,6 @@ class FluidHorizonEnv(gym.Env):
         self.score = 0
         self.passed_obstacles = 0
 
-        # Create initial obstacles
         for i in range(5):
             self.obstacles.append(Obstacle(WIDTH + i * (WIDTH // 2)))
 
@@ -179,39 +166,30 @@ class FluidHorizonEnv(gym.Env):
         return observation, info
 
     def step(self, action):
-        """Performs one step in the environment given an action."""
         terminated = False
         reward = 0.0
 
-        # Update ship
         self.ship.update(action == 1)
 
-        # Update and check obstacles
         for obs in self.obstacles[:]:
             obs.update()
             if obs.x + obs.width < self.ship.x and not obs.passed:
                 obs.passed = True
                 self.passed_obstacles += 1
                 self.score += 1
-
-                # ✅ 장애물 통과 보상
                 reward += 5.0
-
-                # ✅ 점진적 보상 (5개 단위마다 추가)
                 if self.score % 5 == 0:
                     reward += 10.0
 
-        # Remove obstacles off screen & add new
         if self.obstacles and self.obstacles[0].x + self.obstacles[0].width < 0:
             self.obstacles.pop(0)
             self.obstacles.append(Obstacle(self.obstacles[-1].x + WIDTH // 2))
 
-        # Collision / survival
         if check_collision(self.ship, self.obstacles):
-            reward = -100.0   # ✅ 사망 패널티 강화
+            reward = -100.0
             terminated = True
         else:
-            reward += 0.5     # ✅ 생존 보상 강화
+            reward += 0.5
 
         observation = self._get_obs()
         info = self._get_info()
@@ -223,7 +201,6 @@ class FluidHorizonEnv(gym.Env):
         return observation, reward, terminated, truncated, info
 
     def render(self):
-        """Renders the game state to the screen."""
         if self.screen is None:
             if self.render_mode == "human":
                 pygame.init()
@@ -233,12 +210,10 @@ class FluidHorizonEnv(gym.Env):
 
         if self.render_mode == "human":
             self.screen.fill(BG_COLOR)
-
             self.ship.draw(self.screen)
             for obs in self.obstacles:
                 obs.draw(self.screen)
 
-            # ✅ 점수 표시
             score_text = FONT.render(f"Score: {int(self.score)}", True, TEXT_COLOR)
             self.screen.blit(score_text, (10, 10))
 
@@ -246,29 +221,24 @@ class FluidHorizonEnv(gym.Env):
             self.clock.tick(self.metadata["render_fps"])
 
     def close(self):
-        """Closes the Pygame window."""
         if self.screen is not None:
             pygame.quit()
             self.screen = None
 
-# ---------------------------------------------
+# ----------------------
 # Main execution for testing
-# ---------------------------------------------
+# ----------------------
 if __name__ == "__main__":
     env = FluidHorizonEnv(render_mode="human")
     observation, info = env.reset()
-
     running = True
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-
         action = env.action_space.sample()
         observation, reward, terminated, truncated, info = env.step(action)
-
         if terminated or truncated:
             print(f"Episode finished. Final Score: {info['score']}")
             observation, info = env.reset()
-
     env.close()
